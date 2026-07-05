@@ -88,7 +88,7 @@ if ticker:
         if fin is not None:
             fin_renamed = fin_krw.rename(index=mapping)
             # .applymap 대신 .map을 사용하여 포맷팅 적용
-            st.dataframe(fin_renamed.iloc[:, -4:].map(lambda x: f"{x:.2f} 조"))
+        st.dataframe(fin_renamed.iloc[:, -4:].map(lambda x: f"{x:.2f} 조"))
 
         # 6. 다음 실적 발표일
         calendar = stock.calendar
