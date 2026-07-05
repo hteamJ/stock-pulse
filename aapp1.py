@@ -2,31 +2,31 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 from datetime import datetime
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 
 st.set_page_config(page_title="StockPulse: 기업 정밀 분석기", layout="wide")
 
 st.title("🔍 StockPulse : 기업 정밀 분석기")
 ticker = st.text_input("기업 티커를 입력하세요 (예: TSLA, AAPL, NVDA)").upper()
 
+# 번역 함수 정의
+def translate_text(text):
+    try:
+        return GoogleTranslator(source='auto', target='ko').translate(text[:1000])
+    except:
+        return text
+
 if ticker:
     try:
-        # 0. 실시간 환율 가져오기
         usd_krw = yf.Ticker("USDKRW=X").info.get('regularMarketPrice', 1330)
-        
         stock = yf.Ticker(ticker)
         info = stock.info
-        translator = Translator()
         
         # 1. 기업 개요
         company_name = info.get('longName', '정보 없음')
         st.header(f"{company_name} ({ticker})")
         raw_summary = info.get('longBusinessSummary', '정보 없음')
-        try:
-            korean_summary = translator.translate(raw_summary[:1000], dest='ko').text
-            st.write(korean_summary)
-        except:
-            st.write(raw_summary)
+        st.write(translate_text(raw_summary))
         st.divider()
         
         # 2. 핵심 지표
@@ -36,7 +36,6 @@ if ticker:
         col2.metric("PER", info.get('forwardPE', 'N/A'))
         col3.metric("영업이익률", f"{info.get('operatingMargins', 0)*100:.1f}%")
         col4.metric("배당수익률", f"{info.get('dividendYield', 0)*100:.2f}%" if info.get('dividendYield') else "없음")
-        st.info("💡 **PER이란?** 현재 주가가 1주당 이익의 몇 배인가를 나타냅니다. (낮을수록 저평가, 높을수록 성장 기대감)")
 
         # 3. 상세 재무 테이블
         st.subheader("📊 상세 재무 분석")
@@ -52,34 +51,24 @@ if ticker:
         }
         st.table(pd.DataFrame(details, index=['값', '해설']).T)
 
-        # 4. 실적 시각화 및 증감률
+        # 4. 실적 시각화
         st.subheader("📈 최근 8분기 실적 추이")
         fin = stock.quarterly_financials
         if fin is not None and not fin.empty:
-            fin = fin.iloc[:, ::-1] # 과거순 정렬
+            fin = fin.iloc[:, ::-1] 
             fin_krw = (fin / 1e12) * usd_krw
-            
             chart_data = fin_krw.loc[['Total Revenue', 'Net Income']].T
             chart_data.columns = ['총 매출', '순이익']
-            
-            # 매출 대비 순이익률 (%) 계산
             chart_data['순이익률(%)'] = (chart_data['순이익'] / chart_data['총 매출']) * 100
             
             st.bar_chart(chart_data[['총 매출', '순이익']])
             
-            # --- 수정된 부분: nan 제거 및 단위 표시 ---
             st.write("분기별 상세 수치 (조 원 및 순이익률 %):")
-            display_df = chart_data.T.dropna(axis=1) # 데이터 없는 분기 제거
-            
-            # 포맷팅을 위해 문자열 데이터프레임 생성
-            formatted_df = display_df.copy().astype(object)
-            for col in formatted_df.columns:
-                formatted_df.loc['총 매출', col] = f"{display_df.loc['총 매출', col]:.2f} 조"
-                formatted_df.loc['순이익', col] = f"{display_df.loc['순이익', col]:.2f} 조"
-                formatted_df.loc['순이익률(%)', col] = f"{display_df.loc['순이익률(%)', col]:.2f} %"
-            st.table(formatted_df)
+            # 데이터 타입을 안전하게 처리
+            display_df = chart_data.T.dropna(axis=1).round(2)
+            st.table(display_df)
         
-        # 5. 주요 재무 항목 한글화
+        # 5. 주요 재무 항목
         st.subheader("🏢 주요 재무 항목 (최근 공시 기준)")
         mapping = {
             'Operating Revenue': '영업 매출', 'Net Income': '순이익', 
@@ -87,8 +76,8 @@ if ticker:
         }
         if fin is not None:
             fin_renamed = fin_krw.rename(index=mapping)
-            # .applymap 대신 .map을 사용하여 포맷팅 적용
-        st.dataframe(fin_renamed.iloc[:, -4:].map(lambda x: f"{x:.2f} 조"))
+            # map 함수 사용 시 숫자/문자열 충돌 방지
+            st.dataframe(fin_renamed.iloc[:, -4:])
 
         # 6. 다음 실적 발표일
         calendar = stock.calendar
